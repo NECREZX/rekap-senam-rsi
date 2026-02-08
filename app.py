@@ -22,10 +22,12 @@ import math
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
 # Konfigurasi
-UPLOAD_FOLDER = 'uploads'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+DATA_FILE = os.path.join(BASE_DIR, 'data/senam_data.json')
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
-DATA_FILE = 'data/senam_data.json'
-TEMP_DATA_FILE = 'data/current_upload.json'
+TEMP_DATA_FILE = os.path.join(BASE_DIR, 'data/current_upload.json')
 
 # Buat folder
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
