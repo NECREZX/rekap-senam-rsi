@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Dashboard Rekap Senam - RSI Siti Khodijah</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <style>
+    .group-export-info {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border-left: 4px solid #1976d2;
+    }
+
+    .group-export-info p {
+      margin: 0;
+      color: #1565c0;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .shift-filter-buttons {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 25px;
+    }
+
+    .group-shift-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 10px;
+      background: white;
+      border: 2px solid #dee2e6;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s;
+      min-height: 120px;
+    }
+
+    .group-shift-btn:hover {
+      border-color: #1976d2;
+      background: #f5f9ff;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .group-shift-btn.active {
+      background: linear-gradient(135deg, #1976d2, #1565c0);
+      border-color: #1565c0;
+      color: white;
+      box-shadow: 0 6px 16px rgba(25, 118, 210, 0.4);
+    }
+
+    .group-shift-btn i {
+      font-size: 32px;
+      margin-bottom: 10px;
+      opacity: 0.8;
+    }
+
+    .group-shift-btn.active i {
+      opacity: 1;
+    }
+
+    .group-shift-btn span {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .group-shift-btn small {
+      font-size: 11px;
+      opacity: 0.7;
+      font-weight: 500;
+    }
+
+    .group-shift-btn.active small {
+      opacity: 0.9;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .shift-filter-buttons {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .group-shift-btn {
+        min-height: 90px;
+        padding: 15px 10px;
+      }
+
+      .group-shift-btn i {
+        font-size: 28px;
+        margin-bottom: 8px;
+      }
+
+      .group-shift-btn span {
+        font-size: 14px;
+      }
+
+      .group-shift-btn small {
+        font-size: 10px;
+      }
+    }
+    .modal-date-range-control {
+      position: relative;
+    }
+
+    .modal-date-range-control .date-range-dropdown {
+      display: none;
+      min-width: 280px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      padding: 15px;
+      border: 1px solid #dee2e6;
+    }
+
+    .modal-date-range-control .date-range-dropdown.show {
+      display: block;
+    }
+
+    @media (max-width: 768px) {
+      .monthly-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
+
+      .modal-date-range-control {
+        width: 100%;
+      }
+
+      .modal-date-range-control .btn {
+        width: 100%;
+      }
+
+      .modal-date-range-control .date-range-dropdown {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        right: auto;
+        width: 90vw;
+        max-width: 320px;
+        z-index: 99999;
+      }
+    }
+  </style>
+  <body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+      <div class="loading-content">
+        <div class="spinner"></div>
+        <p>Memuat dashboard...</p>
+      </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-main">
+          <div class="logo-container">
+            <div class="logo">
+              <i class="fas fa-hospital-alt"></i>
+            </div>
+            <div class="header-text">
+              <h1><i class="fas fa-chart-line"></i> Dashboard Rekap Senam</h1>
+              <p class="subtitle">Rumah Sakit Islam Siti Khodijah Palembang</p>
+            </div>
+          </div>
+          <div class="header-status" id="dataStatus">
+            <i class="fas fa-database"></i>
+            <span>Belum ada data</span>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <!-- Search Box -->
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input
+              type="text"
+              id="searchInput"
+              placeholder="Cari nama, NIK, jabatan..."
+            />
+            <button class="search-clear" onclick="clearSearch()">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+
+          <!-- Filter Button -->
+          <button class="btn btn-outline" onclick="toggleFilterPanel()">
+            <i class="fas fa-filter"></i> <span>Filter</span>
+          </button>
+
+          <!-- Shift Status Dropdown -->
+          <div class="dropdown">
+            <button
+              class="btn btn-outline"
+              id="shiftStatusBtn"
+              onclick="event.stopPropagation(); document.querySelector('.dropdown-menu').classList.toggle('show')"
+            >
+              <i class="fas fa-clock"></i>
+              <span id="shiftStatusText">Non-Shift</span>
+              <i class="fas fa-chevron-down"></i>
+            </button>
+            <div class="dropdown-menu">
+              <a class="dropdown-item" onclick="changeShiftStatus('non_shift')">
+                <i class="fas fa-sun"></i> Non-Shift
+              </a>
+              <a class="dropdown-item" onclick="changeShiftStatus('shift')">
+                <i class="fas fa-moon"></i> Shift
+              </a>
+            </div>
+          </div>
+
+          <!-- Date Range Picker -->
+          <div class="date-range-container">
+            <button
+              class="btn btn-outline"
+              id="dateRangeBtn"
+              onclick="toggleDateRangeDropdown()"
+            >
+              <i class="fas fa-calendar-alt"></i>
+              <span id="dateRangeText">Rentang Waktu</span>
+              <i class="fas fa-chevron-down"></i>
+            </button>
+            <div class="date-range-dropdown" id="dateRangeDropdown">
+              <div class="date-range-form">
+                <div class="form-group">
+                  <label><i class="fas fa-calendar-day"></i> Mulai</label>
+                  <input
+                    type="month"
+                    id="dateRangeStart"
+                    class="form-control"
+                  />
+                </div>
+                <div class="form-group">
+                  <label><i class="fas fa-calendar-day"></i> Sampai</label>
+                  <input type="month" id="dateRangeEnd" class="form-control" />
+                </div>
+                <div class="date-range-actions">
+                  <button
+                    class="btn btn-sm btn-outline"
+                    onclick="clearDateRange()"
+                  >
+                    <i class="fas fa-undo"></i> Reset
+                  </button>
+                  <button
+                    class="btn btn-sm btn-primary"
+                    onclick="applyDateRange()"
+                  >
+                    <i class="fas fa-check"></i> Terapkan
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload Button -->
+          <button class="btn btn-primary" onclick="openUploadModal()">
+            <i class="fas fa-upload"></i> <span>Upload</span>
+          </button>
+
+          <!-- Export Buttons -->
+          <div class="dropdown">
+            <button
+              class="btn btn-success"
+              onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle('show')"
+            >
+              <i class="fas fa-download"></i> <span>Export</span>
+              <i class="fas fa-chevron-down"></i>
+            </button>
+            <div class="dropdown-menu">
+              <a class="dropdown-item" onclick="exportExcel()">
+                <i class="fas fa-file-excel"></i> Excel Individual
+              </a>
+              <a class="dropdown-item" onclick="exportPDF()">
+                <i class="fas fa-file-pdf"></i> PDF Individual
+              </a>
+              <a class="dropdown-item" onclick="exportGroupExcel()">
+                <i class="fas fa-file-excel"></i> Export Excel Kelompok
+              </a>
+              <a class="dropdown-item" onclick="openGroupExportModal()">
+                <i class="fas fa-file-pdf"></i> Export PDF Kelompok
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <br />
+        <br />
+
+        <div
+          class="selected-actions"
+          id="selectedActions"
+          style="display: none"
+        >
+          <div class="selected-info">
+            <i class="fas fa-check-square"></i>
+            <span id="selectedCount">0</span> Pegawai Dipilih
+          </div>
+          <div class="selected-buttons">
+            <button class="btn btn-sm btn-outline" onclick="clearSelection()">
+              <i class="fas fa-times"></i> Batal
+            </button>
+            <button
+              class="btn btn-sm btn-success"
+              onclick="exportSelectedExcel()"
+            >
+              <i class="fas fa-file-excel"></i> Export Excel
+            </button>
+            <button class="btn btn-sm btn-danger" onclick="exportSelectedPDF()">
+              <i class="fas fa-file-pdf"></i> Export PDF
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Filter Panel -->
+      <div id="filterPanel" class="filter-panel">
+        <div class="filter-header">
+          <h3><i class="fas fa-sliders-h"></i> Filter Data</h3>
+          <button class="btn btn-sm btn-outline" onclick="resetAllFilters()">
+            <i class="fas fa-undo"></i> Reset Semua
+          </button>
+        </div>
+        <div class="filter-grid">
+          <div class="filter-group">
+            <label><i class="fas fa-map-marker-alt"></i> Tempat Tugas</label>
+            <select
+              id="filterTempat"
+              class="form-control"
+              onchange="applyFilters()"
+            >
+              <option value="">Semua Tempat</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label><i class="fas fa-sitemap"></i> Struktur Lini</label>
+            <select
+              id="filterStruktur"
+              class="form-control"
+              onchange="applyFilters()"
+            >
+              <option value="">Semua Struktur Lini</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label><i class="fas fa-user-md"></i> Kelompok Nakes</label>
+            <select
+              id="filterKelompok"
+              class="form-control"
+              onchange="applyFilters()"
+            >
+              <option value="">Semua Kelompok</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label><i class="fas fa-id-badge"></i> Status Pegawai</label>
+            <select
+              id="filterStatus"
+              class="form-control"
+              onchange="applyFilters()"
+            >
+              <option value="">Semua Status</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label><i class="fas fa-calendar"></i> Tahun</label>
+            <select
+              id="filterTahun"
+              class="form-control"
+              onchange="applyFilters()"
+            >
+              <option value="all">Semua Tahun</option>
+              <option value="2022">2022</option>
+              <option value="2023">2023</option>
+              <option value="2024">2024</option>
+              <option value="2025">2025</option>
+              <option value="2026">2026</option>
+              <option value="2027">2027</option>
+              <option value="2028">2028</option>
+              <option value="2029">2029</option>
+              <option value="2030">2030</option>
+              <option value="2031">2031</option>
+              <option value="2032">2032</option>
+            </select>
+          </div>
+        </div>
+        <div class="filter-info" id="filterInfo">Tidak ada filter aktif</div>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div
+            class="kpi-icon"
+            style="background: linear-gradient(135deg, #3498db, #2980b9)"
+          >
+            <i class="fas fa-users"></i>
+          </div>
+          <div class="kpi-content">
+            <span class="kpi-label">Total Pegawai</span>
+            <h2 id="totalPegawai">0</h2>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div
+            class="kpi-icon"
+            style="background: linear-gradient(135deg, #2ecc71, #27ae60)"
+          >
+            <i class="fas fa-running"></i>
+          </div>
+          <div class="kpi-content">
+            <span class="kpi-label">Total Senam</span>
+            <h2 id="totalSenam">0</h2>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div
+            class="kpi-icon"
+            style="background: linear-gradient(135deg, #e74c3c, #c0392b)"
+          >
+            <i class="fas fa-chart-line"></i>
+          </div>
+          <div class="kpi-content">
+            <span class="kpi-label">Rata-rata per Orang</span>
+            <h2 id="rataSenam">0</h2>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div
+            class="kpi-icon"
+            style="background: linear-gradient(135deg, #9b59b6, #8e44ad)"
+          >
+            <i class="fas fa-calendar-alt"></i>
+          </div>
+          <div class="kpi-content">
+            <span class="kpi-label">Periode Data</span>
+            <h2 id="periodeData">2022-2032</h2>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Section -->
+      <div class="charts-grid">
+        <div class="chart-container">
+          <div class="chart-header">
+            <h3>
+              <i class="fas fa-chart-bar"></i> Grafik Total Senam per Tahun
+            </h3>
+            <div class="chart-controls">
+              <button class="chart-btn active" onclick="changeChartType('bar')">
+                <i class="fas fa-chart-bar"></i> Bar
+              </button>
+              <button class="chart-btn" onclick="changeChartType('line')">
+                <i class="fas fa-chart-line"></i> Line
+              </button>
+              <button class="chart-btn" onclick="changeChartType('pie')">
+                <i class="fas fa-chart-pie"></i> Pie
+              </button>
+            </div>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="mainChart"></canvas>
+          </div>
+        </div>
+
+        <div class="top-performers">
+          <div class="top-header">
+            <h3><i class="fas fa-trophy"></i> Top 5 Pegawai</h3>
+            <span class="top-subtitle" id="topSubtitle">Semua Tahun</span>
+          </div>
+          <div class="top-list" id="topList">
+            <div class="empty-top">
+              <i class="fas fa-users"></i>
+              <p>Data tidak tersedia</p>
+            </div>
+          </div>
+          <div class="top-footer">
+            <small
+              ><i class="fas fa-info-circle"></i> Klik untuk melihat
+              detail</small
+            >
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Table -->
+      <div class="table-container">
+        <div class="table-header">
+          <h3><i class="fas fa-table"></i> Data Pegawai</h3>
+          <div class="table-controls">
+            <div class="table-info" id="tableInfo">
+              Menampilkan 0 dari 0 pegawai
+            </div>
+            <div class="table-actions">
+              <button class="btn btn-sm btn-outline" onclick="refreshData()">
+                <i class="fas fa-sync-alt"></i> <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table id="dataTable">
+            <thead>
+              <tr>
+                <th style="width: 40px">
+                  <input
+                    type="checkbox"
+                    id="selectAll"
+                    onchange="toggleSelectAll()"
+                    style="cursor: pointer; width: 18px; height: 18px"
+                  />
+                </th>
+                <th>No</th>
+                <th onclick="sortTable('nama')">
+                  Nama <i class="fas fa-sort"></i>
+                </th>
+                <th onclick="sortTable('nik')">
+                  NIK <i class="fas fa-sort"></i>
+                </th>
+                <th>JK</th>
+                <th onclick="sortTable('jabatan')">
+                  Jabatan <i class="fas fa-sort"></i>
+                </th>
+                <th onclick="sortTable('struktur')">
+                  Struktur Lini <i class="fas fa-sort"></i>
+                </th>
+                <th>Tempat Tugas</th>
+                <th onclick="sortTable('total_all')">
+                  Total Senam <i class="fas fa-sort"></i>
+                </th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <tr>
+                <td colspan="9" class="empty-table">
+                  <i class="fas fa-database"></i>
+                  <p>Belum ada data. Silakan upload file Excel.</p>
+                  <button class="btn btn-primary" onclick="openUploadModal()">
+                    <i class="fas fa-upload"></i> Upload File
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <div class="pagination" id="pagination"></div>
+          <div class="rows-per-page">
+            <label>Tampilkan:</label>
+            <select id="rowsPerPage" onchange="changeRowsPerPage()">
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="uploadModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3><i class="fas fa-file-upload"></i> Upload File Data</h3>
+          <span class="close" onclick="closeUploadModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="template-info">
+            <h4>
+              <i class="fas fa-info-circle"></i> Format File yang Didukung:
+            </h4>
+            <ul>
+              <li>Format file: .xlsx, .xls, atau .csv</li>
+              <li>Header data dimulai dari baris ke-5</li>
+              <li>Kolom wajib: NAMA, NIK, TEMPATTUGAS</li>
+              <li>Kolom bulanan format: YYYY-MM atau YYYY/MM</li>
+              <li>Maksimal ukuran file: 10MB</li>
+            </ul>
+          </div>
+
+          <div class="upload-area" id="dropArea">
+            <div class="upload-icon">
+              <i class="fas fa-cloud-upload-alt"></i>
+            </div>
+            <h4>Seret file ke sini</h4>
+            <p>atau</p>
+            <button class="btn btn-primary" onclick="triggerFileInput()">
+              <i class="fas fa-folder-open"></i> Pilih File
+            </button>
+            <input
+              type="file"
+              id="fileInput"
+              accept=".xlsx,.xls,.csv"
+              style="display: none"
+            />
+            <p class="upload-hint">
+              <i class="fas fa-file-excel"></i> Excel/CSV<br />
+              <i class="fas fa-weight-hanging"></i> Maksimal 10MB
+            </p>
+          </div>
+
+          <div id="fileInfo" class="file-info" style="display: none">
+            <div class="file-preview">
+              <div class="file-icon">
+                <i class="fas fa-file-excel"></i>
+              </div>
+              <div class="file-details">
+                <h5 id="fileName"></h5>
+                <p id="fileSize"></p>
+              </div>
+              <button class="btn btn-sm btn-danger" onclick="removeFile()">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+
+            <div id="validationResult" style="display: none">
+              <h5><i class="fas fa-check-circle"></i> Hasil Validasi</h5>
+              <div id="validationDetails"></div>
+            </div>
+
+            <div id="uploadProgress" style="display: none">
+              <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+              </div>
+              <p class="progress-text" id="progressText"></p>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeUploadModal()">
+              <i class="fas fa-times"></i> Batal
+            </button>
+            <button
+              class="btn btn-success"
+              id="uploadBtn"
+              onclick="uploadFile()"
+              disabled
+            >
+              <i class="fas fa-upload"></i> Upload Data
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="detailModal" class="modal">
+      <div class="modal-content large">
+        <div class="modal-header">
+          <h3 id="detailName"></h3>
+          <span class="close" onclick="closeDetailModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+          <!-- Tabs -->
+          <div class="tabs">
+            <button class="tab-btn active" onclick="openDetailTab('info')">
+              <i class="fas fa-info-circle"></i> Info Pegawai
+            </button>
+            <button class="tab-btn" onclick="openDetailTab('yearly')">
+              <i class="fas fa-chart-line"></i> Data Tahunan
+            </button>
+            <button class="tab-btn" onclick="openDetailTab('monthly')">
+              <i class="fas fa-calendar-alt"></i> Data Bulanan
+            </button>
+          </div>
+
+          <!-- Tab Content -->
+          <div class="tab-content">
+            <!-- Info Tab -->
+            <div id="infoTab" class="tab-pane active">
+              <div class="detail-grid">
+                <div class="detail-item">
+                  <label><i class="fas fa-id-card"></i> NIK</label>
+                  <span id="detailNik"></span>
+                </div>
+                <div class="detail-item">
+                  <label><i class="fas fa-venus-mars"></i> Jenis Kelamin</label>
+                  <span id="detailJk"></span>
+                </div>
+                <div class="detail-item">
+                  <label><i class="fas fa-briefcase"></i> Status Pegawai</label>
+                  <span id="detailStatus"></span>
+                </div>
+                <div class="detail-item">
+                  <label><i class="fas fa-user-md"></i> Kelompok Nakes</label>
+                  <span id="detailKelompok"></span>
+                </div>
+                <div class="detail-item">
+                  <label><i class="fas fa-user-tie"></i> Jabatan</label>
+                  <span id="detailJabatan"></span>
+                </div>
+                <div class="detail-item">
+                  <label><i class="fas fa-sitemap"></i> Struktur Lini</label>
+                  <span id="detailStruktur"></span>
+                </div>
+                <div class="detail-item">
+                  <label
+                    ><i class="fas fa-map-marker-alt"></i> Tempat Tugas</label
+                  >
+                  <span id="detailTempat"></span>
+                </div>
+                <div class="detail-item">
+                  <label><i class="fas fa-clock"></i> Status Shift</label>
+                  <span id="detailShiftStatus"></span>
+                </div>
+              </div>
+
+              <div class="summary-section">
+                <h5>
+                  <i class="fas fa-chart-pie"></i> Ringkasan Kehadiran Senam
+                </h5>
+                <div class="summary-grid" id="summaryYears"></div>
+              </div>
+            </div>
+
+            <!-- Yearly Tab -->
+            <div id="yearlyTab" class="tab-pane">
+              <div class="chart-wrapper">
+                <canvas id="yearlyChart"></canvas>
+              </div>
+              <div class="data-table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Tahun</th>
+                      <th>Jumlah Senam</th>
+                      <th>Persentase</th>
+                    </tr>
+                  </thead>
+                  <tbody id="yearlyTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Monthly Tab -->
+            <div id="monthlyTab" class="tab-pane">
+              <div class="monthly-controls">
+                <div class="year-selector">
+                  <label><i class="fas fa-calendar"></i> Tahun:</label>
+                  <select id="monthYearSelect" onchange="changeMonthYear()">
+                    <option value="2022">2022</option>
+                    <option value="2023">2023</option>
+                    <option value="2024">2024</option>
+                    <option value="2025">2025</option>
+                    <option value="2026">2026</option>
+                    <option value="2027">2027</option>
+                    <option value="2028">2028</option>
+                    <option value="2029">2029</option>
+                    <option value="2030">2030</option>
+                    <option value="2031">2031</option>
+                    <option value="2032">2032</option>
+                  </select>
+                </div>
+
+                <!-- TAMBAHAN BARU: Kontrol date range di modal -->
+                <div class="modal-date-range-control">
+                  <button
+                    class="btn btn-sm btn-outline"
+                    onclick="document.getElementById('modalDateRangeDropdown').classList.toggle('show')"
+                  >
+                    <i class="fas fa-calendar-alt"></i> Filter Rentang Waktu
+                  </button>
+
+                  <div
+                    class="date-range-dropdown"
+                    id="modalDateRangeDropdown"
+                    style="
+                      position: absolute;
+                      right: 0;
+                      top: 100%;
+                      margin-top: 5px;
+                      z-index: 1000;
+                    "
+                  >
+                    <div class="date-range-form">
+                      <div class="form-group">
+                        <label><i class="fas fa-calendar-day"></i> Mulai</label>
+                        <input
+                          type="month"
+                          id="modalDateRangeStart"
+                          class="form-control"
+                        />
+                      </div>
+                      <div class="form-group">
+                        <label
+                          ><i class="fas fa-calendar-day"></i> Sampai</label
+                        >
+                        <input
+                          type="month"
+                          id="modalDateRangeEnd"
+                          class="form-control"
+                        />
+                      </div>
+                      <div class="date-range-actions">
+                        <button
+                          class="btn btn-sm btn-outline"
+                          onclick="clearModalDateRange()"
+                        >
+                          <i class="fas fa-undo"></i> Reset
+                        </button>
+                        <button
+                          class="btn btn-sm btn-primary"
+                          onclick="applyModalDateRange()"
+                        >
+                          <i class="fas fa-check"></i> Terapkan
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="date-range-info" id="monthlyDateRangeInfo">
+                  <i class="fas fa-calendar-alt"></i> 24 bulan terakhir
+                </div>
+
+                <button class="btn btn-danger" onclick="exportEmployeePDF()">
+                  <i class="fas fa-file-pdf"></i> Export PDF
+                </button>
+              </div>
+
+              <div class="monthly-summary" id="monthlySummary"></div>
+
+              <div class="chart-wrapper">
+                <canvas id="monthlyChart"></canvas>
+              </div>
+
+              <div class="data-table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Bulan</th>
+                      <th>Jumlah Senam</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="monthlyTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="groupExportModal" class="modal">
+      <div class="modal-content" style="max-width: 500px">
+        <div class="modal-header">
+          <h3><i class="fas fa-users"></i> Export Kelompok PDF</h3>
+          <span class="close" onclick="closeGroupExportModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="group-export-info">
+            <p>
+              <i class="fas fa-info-circle"></i> Pilih kategori shift untuk
+              export PDF kelompok:
+            </p>
+          </div>
+
+          <div class="shift-filter-buttons">
+            <button
+              class="group-shift-btn active"
+              data-shift="all"
+              onclick="setGroupShiftFilter('all')"
+            >
+              <i class="fas fa-users"></i>
+              <span>Semua</span>
+              <small>Shift & Non-Shift</small>
+            </button>
+          </div>
+
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeGroupExportModal()">
+              <i class="fas fa-times"></i> Batal
+            </button>
+            <button class="btn btn-danger" onclick="exportGroupPDF()">
+              <i class="fas fa-file-pdf"></i> Export PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- JavaScript -->
+    <script src="/static/js/dashboard.js"></script>
+  </body>
+</html>
