@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
-    <title>Dashboard Rekap Senam - RSI Siti Khadijah</title>
+    <title>Dashboard Rekap Senam - RSI Siti Khodijah</title>
     <link rel="stylesheet" href="/static/css/style.css" />
     <link
       rel="stylesheet"
@@ -134,7 +134,68 @@
       display: block;
     }
 
+    /* Footer Styles */
+    .app-footer {
+      background: linear-gradient(135deg, #1976d2, #1565c0);
+      color: white;
+      padding: 25px 20px;
+      margin-top: 50px;
+      text-align: center;
+      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .footer-content {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .footer-copyright {
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .footer-copyright i {
+      font-size: 16px;
+    }
+
+    .footer-author {
+      font-size: 14px;
+      opacity: 0.9;
+      margin-top: 5px;
+    }
+
+    .footer-author i {
+      margin: 0 5px;
+      font-size: 12px;
+    }
+
+    .footer-divider {
+      width: 60px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.5);
+      margin: 12px auto;
+      border-radius: 2px;
+    }
+
     @media (max-width: 768px) {
+      .app-footer {
+        padding: 20px 15px;
+      }
+
+      .footer-copyright {
+        font-size: 14px;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .footer-author {
+        font-size: 13px;
+      }
       .monthly-controls {
         flex-direction: column;
         align-items: stretch;
@@ -181,7 +242,7 @@
             </div>
             <div class="header-text">
               <h1><i class="fas fa-chart-line"></i> Dashboard Rekap Senam</h1>
-              <p class="subtitle">Rumah Sakit Islam Siti Khadijah Palembang</p>
+              <p class="subtitle">Rumah Sakit Islam Siti Khodijah Palembang</p>
             </div>
           </div>
           <div class="header-status" id="dataStatus">
@@ -903,6 +964,16 @@
 
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
+
+    <footer class="app-footer">
+      <div class="footer-content">
+        <div class="footer-divider"></div>
+        <div class="footer-author">
+          <i class="fas fa-code"></i>
+          Developed by <strong>Muhammad Rifqi Thoohaa Anas</strong>
+        </div>
+      </div>
+    </footer>
 
     <!-- JavaScript -->
     <script src="/static/js/dashboard.js"></script>
