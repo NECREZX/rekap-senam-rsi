@@ -15,6 +15,32 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+    }
+
+    /* Biar layout dashboard fleksibel */
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Container utama jangan nutup footer */
+    .container {
+      flex: 1;
+      min-height: auto !important;
+    }
+
+    /* Footer fix */
+    .app-footer {
+      width: 100%;
+      display: block;
+      margin-top: 40px;
+      position: relative;
+      z-index: 10;
+    }
     .group-export-info {
       background: #e3f2fd;
       padding: 15px;
