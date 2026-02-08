@@ -17,26 +17,29 @@
   <style>
     html,
     body {
-      height: 100%;
-      margin: 0;
+      height: 100% !important;
+      margin: 0 !important;
     }
 
     body {
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
+      display: flex !important;
+      flex-direction: column !important;
+      min-height: 100vh !important;
     }
 
+    /* paksa container tidak nutup footer */
     .container {
-      flex: 1;
+      flex: 1 !important;
+      height: auto !important;
+      min-height: auto !important;
     }
 
+    /* paksa footer stay di bawah */
     .app-footer {
-      width: 100%;
-      text-align: center;
-      padding: 10px;
-      background: white;
-      border-top: 1px solid #ddd;
+      margin-top: auto !important;
+      width: 100% !important;
+      position: relative !important;
+      bottom: 0 !important;
     }
 
     .group-export-info {
