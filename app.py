@@ -79,13 +79,13 @@ def excel_to_json(file_path):
             if df is None:
                 raise ValueError("Gagal membaca file CSV")
         else:
-            df = pd.read_excel(file_path, header=4)
+            df = pd.read_excel(file_path, header=4, engine="openpyxl")
         
         if df.empty or len(df.columns) < 3:
             if file_path.endswith('.csv'):
                 df = pd.read_csv(file_path, header=None)
             else:
-                df = pd.read_excel(file_path, header=None)
+                df = pd.read_excel(file_path, header=None, engine="openpyxl")
             
             header_row = None
             for idx in range(min(10, len(df))):
