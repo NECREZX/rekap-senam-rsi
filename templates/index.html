@@ -21,26 +21,24 @@
       margin: 0;
     }
 
-    /* Biar layout dashboard fleksibel */
     body {
       display: flex;
       flex-direction: column;
+      min-height: 100vh;
     }
 
-    /* Container utama jangan nutup footer */
     .container {
       flex: 1;
-      min-height: auto !important;
     }
 
-    /* Footer fix */
     .app-footer {
       width: 100%;
-      display: block;
-      margin-top: 40px;
-      position: relative;
-      z-index: 10;
+      text-align: center;
+      padding: 10px;
+      background: white;
+      border-top: 1px solid #ddd;
     }
+
     .group-export-info {
       background: #e3f2fd;
       padding: 15px;
