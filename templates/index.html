@@ -164,6 +164,14 @@
       display: block;
     }
 
+    .dropdown-item[style*="color: #27ae60"] {
+      font-weight: 600;
+    }
+    .dropdown-item[style*="color: #27ae60"]:hover {
+      background: #e8f5e9;
+      color: #1b5e20 !important;
+    }
+
     @media (max-width: 768px) {
       .monthly-controls {
         flex-direction: column;
@@ -324,11 +332,44 @@
               <a class="dropdown-item" onclick="exportPDF()">
                 <i class="fas fa-file-pdf"></i> PDF Individual
               </a>
+              <div class="dropdown-divider"></div>
               <a class="dropdown-item" onclick="exportGroupExcel()">
-                <i class="fas fa-file-excel"></i> Export Excel Kelompok
+                <i class="fas fa-file-excel"></i> Excel Kelompok
               </a>
               <a class="dropdown-item" onclick="openGroupExportModal()">
-                <i class="fas fa-file-pdf"></i> Export PDF Kelompok
+                <i class="fas fa-file-pdf"></i> PDF Kelompok
+              </a>
+
+              <div class="dropdown-divider"></div>
+              <!-- BARU: Pegawai Ikut Senam -->
+              <a
+                class="dropdown-item"
+                onclick="exportAttendanceExcel()"
+                style="color: #27ae60"
+              >
+                <i class="fas fa-file-excel"></i> Excel Pegawai Ikut Senam
+              </a>
+              <a
+                class="dropdown-item"
+                onclick="exportAttendancePDF()"
+                style="color: #27ae60"
+              >
+                <i class="fas fa-file-pdf"></i> PDF Pegawai Ikut Senam
+              </a>
+              <div class="dropdown-divider"></div>
+              <a
+                class="dropdown-item"
+                onclick="exportNoAttendanceExcel()"
+                style="color: #e74c3c"
+              >
+                <i class="fas fa-file-excel"></i> Excel Pegawai Tidak Ikut
+              </a>
+              <a
+                class="dropdown-item"
+                onclick="exportNoAttendancePDF()"
+                style="color: #e74c3c"
+              >
+                <i class="fas fa-file-pdf"></i> PDF Pegawai Tidak Ikut
               </a>
             </div>
           </div>
@@ -449,6 +490,18 @@
           <div class="kpi-content">
             <span class="kpi-label">Total Pegawai</span>
             <h2 id="totalPegawai">0</h2>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div
+            class="kpi-icon"
+            style="background: linear-gradient(135deg, #e74c3c, #c0392b)"
+          >
+            <i class="fas fa-user-times"></i>
+          </div>
+          <div class="kpi-content">
+            <span class="kpi-label">Pegawai Tidak Ikut</span>
+            <h2 id="totalTidakIkut">0</h2>
           </div>
         </div>
         <div class="kpi-card">
@@ -808,22 +861,12 @@
                 <div class="modal-date-range-control">
                   <button
                     class="btn btn-sm btn-outline"
-                    onclick="document.getElementById('modalDateRangeDropdown').classList.toggle('show')"
+                    onclick="toggleModalDateRangeDropdown()"
                   >
                     <i class="fas fa-calendar-alt"></i> Filter Rentang Waktu
                   </button>
 
-                  <div
-                    class="date-range-dropdown"
-                    id="modalDateRangeDropdown"
-                    style="
-                      position: absolute;
-                      right: 0;
-                      top: 100%;
-                      margin-top: 5px;
-                      z-index: 1000;
-                    "
-                  >
+                  <div class="date-range-dropdown" id="modalDateRangeDropdown">
                     <div class="date-range-form">
                       <div class="form-group">
                         <label><i class="fas fa-calendar-day"></i> Mulai</label>
@@ -933,10 +976,6 @@
 
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
-
-    <footer class="app-footer">
-      <span>© Muhammad Rifqi Thoohaa Anas</span>
-    </footer>
 
     <!-- JavaScript -->
     <script src="/static/js/dashboard.js"></script>
