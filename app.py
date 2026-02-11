@@ -22,12 +22,10 @@ import math
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
 # Konfigurasi
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-DATA_FILE = os.path.join(BASE_DIR, 'data/senam_data.json')
+UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
-TEMP_DATA_FILE = os.path.join(BASE_DIR, 'data/current_upload.json')
+DATA_FILE = 'data/senam_data.json'
+TEMP_DATA_FILE = 'data/current_upload.json'
 
 # Buat folder
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -79,13 +77,13 @@ def excel_to_json(file_path):
             if df is None:
                 raise ValueError("Gagal membaca file CSV")
         else:
-            df = pd.read_excel(file_path, header=4, engine="openpyxl")
+            df = pd.read_excel(file_path, header=4)
         
         if df.empty or len(df.columns) < 3:
             if file_path.endswith('.csv'):
                 df = pd.read_csv(file_path, header=None)
             else:
-                df = pd.read_excel(file_path, header=None, engine="openpyxl")
+                df = pd.read_excel(file_path, header=None)
             
             header_row = None
             for idx in range(min(10, len(df))):
@@ -648,6 +646,695 @@ def export_pdf():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'Terjadi kesalahan: {str(e)}'})
+    
+@app.route('/api/export-no-attendance-excel', methods=['POST'])
+def export_no_attendance_excel():
+    """Export Excel untuk pegawai yang tidak ikut senam sama sekali"""
+    try:
+        data = request.json
+        employees = data.get('employees', [])
+        date_range = data.get('date_range', {})
+        struktur_lini = data.get('struktur_lini', 'Semua')
+        
+        if not employees:
+            return jsonify({'success': False, 'message': 'Tidak ada data pegawai'})
+        
+        # Ambil bulan dari rentang waktu
+        months_list = []
+        if date_range.get('start') and date_range.get('end'):
+            start_year, start_month = map(int, date_range['start'].split('-'))
+            end_year, end_month = map(int, date_range['end'].split('-'))
+            
+            current_year = start_year
+            current_month = start_month
+            
+            while (current_year < end_year) or (current_year == end_year and current_month <= end_month):
+                month_key = f"{current_year}-{str(current_month).zfill(2)}"
+                months_list.append(month_key)
+                
+                current_month += 1
+                if current_month > 12:
+                    current_month = 1
+                    current_year += 1
+        
+        # Buat data untuk Excel
+        rows = []
+        for emp in employees:
+            row = {
+                'NAMA': emp.get('nama', '-'),
+                'NIK': emp.get('nik', '-'),
+                'JABATAN': emp.get('jabatan', '-'),
+                'STRUKTUR_LINI': emp.get('struktur', '-'),
+                'TEMPAT_TUGAS': emp.get('tempat', '-'),
+            }
+            
+            employee_total = 0
+            for month_key in months_list:
+                year, month = month_key.split('-')
+                value = 0
+                
+                if year in emp.get('bulanan', {}):
+                    month_data = emp['bulanan'][year].get(month_key, {})
+                    value = month_data.get('value', 0)
+                
+                row[month_key] = value
+                employee_total += value
+            
+            row['TOTAL'] = employee_total
+            row['STATUS'] = 'TIDAK IKUT SENAM' if employee_total == 0 else f'RENDAH ({employee_total}x)'
+            rows.append(row)
+        
+        df = pd.DataFrame(rows)
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Pegawai Tidak Ikut Senam')
+            
+            worksheet = writer.sheets['Pegawai Tidak Ikut Senam']
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 30)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        output.seek(0)
+        
+        struktur_safe = struktur_lini.replace(' ', '_').replace('/', '-')
+        filename = f"pegawai_tidak_ikut_senam_{struktur_safe}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        print(f"No Attendance Excel Export error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Terjadi kesalahan: {str(e)}'})
+
+
+@app.route('/api/export-no-attendance-pdf', methods=['POST'])
+def export_no_attendance_pdf():
+    """Export PDF untuk pegawai yang tidak ikut senam sama sekali"""
+    try:
+        data = request.json
+        employees = data.get('employees', [])
+        date_range = data.get('date_range', {})
+        shift_filter = data.get('shift_filter', 'all')
+        struktur_lini = data.get('struktur_lini', 'Semua')
+        
+        if not employees:
+            return jsonify({'success': False, 'message': 'Tidak ada data pegawai'})
+        
+        if not date_range.get('start') or not date_range.get('end'):
+            return jsonify({'success': False, 'message': 'Rentang waktu belum ditentukan'})
+        
+        import copy
+        employees = copy.deepcopy(employees)
+        
+        # Filter berdasarkan shift status jika bukan "all"
+        if shift_filter != 'all':
+            filtered_employees = []
+            for emp in employees:
+                if not isinstance(emp, dict):
+                    continue
+                
+                emp_shift_status = emp.get('shift_status', 'non_shift')
+                if emp_shift_status == shift_filter:
+                    filtered_employees.append(emp)
+            
+            employees = filtered_employees
+        
+        if not employees:
+            return jsonify({'success': False, 'message': 'Tidak ada data pegawai untuk filter shift yang dipilih'})
+        
+        # CREATE PDF
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=1.2*cm,
+            leftMargin=1.2*cm,
+            topMargin=0.8*cm,
+            bottomMargin=1.5*cm
+        )
+        
+        story = []
+        styles = getSampleStyleSheet()
+        
+        title_style = ParagraphStyle(
+            'TitleStyle',
+            parent=styles['Heading1'],
+            fontSize=11,
+            alignment=TA_CENTER,
+            spaceAfter=3,
+            textColor=colors.HexColor('#c62828'),
+            fontName='Helvetica-Bold'
+        )
+        
+        subtitle_style = ParagraphStyle(
+            'SubtitleStyle',
+            parent=styles['Heading2'],
+            fontSize=9,
+            alignment=TA_CENTER,
+            spaceAfter=6,
+            textColor=colors.HexColor('#d32f2f'),
+            fontName='Helvetica-Bold'
+        )
+        
+        # HEADER
+        story.append(Paragraph("RUMAH SAKIT ISLAM SITI KHADIJAH PALEMBANG", title_style))
+        story.append(Paragraph("DAFTAR PEGAWAI YANG TIDAK IKUT SENAM", subtitle_style))
+        story.append(Spacer(1, 0.2*cm))
+        
+        shift_text_map = {
+            'all': 'Semua (Shift & Non-Shift)',
+            'shift': 'Shift',
+            'non_shift': 'Non-Shift'
+        }
+        shift_text = shift_text_map.get(shift_filter, 'Semua')
+        
+        # INFO KELOMPOK
+        info_data = [
+            ['STRUKTUR LINI', ':', struktur_lini, 'FILTER SHIFT', ':', shift_text],
+            ['JUMLAH PEGAWAI', ':', str(len(employees)), 'PERIODE', ':', f"{date_range.get('start', '-')} s/d {date_range.get('end', '-')}"]
+        ]
+        
+        info_table = Table(info_data, colWidths=[2.8*cm, 0.3*cm, 4*cm, 2.8*cm, 0.3*cm, 4*cm])
+        info_table.setStyle(TableStyle([
+            ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+            ('FONTNAME', (3,0), (3,-1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 7),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+            ('TOPPADDING', (0,0), (-1,-1), 2),
+        ]))
+        
+        story.append(info_table)
+        story.append(Spacer(1, 0.3*cm))
+        
+        # TABEL DATA PEGAWAI
+        header = ['NO', 'NAMA', 'NIK', 'JABATAN', 'TEMPAT TUGAS', 'TOTAL', 'STATUS']
+        table_data = [header]
+        
+        for idx, emp in enumerate(employees, 1):
+            try:
+                if not isinstance(emp, dict):
+                    continue
+                
+                nama = emp.get('nama', f'Pegawai {idx}')
+                nik = emp.get('nik', '-')
+                jabatan = emp.get('jabatan', '-')
+                tempat = emp.get('tempat', '-')
+                
+                nama_para = Paragraph(str(nama), ParagraphStyle(
+                    'NamaStyle',
+                    fontSize=6,
+                    leading=7,
+                    wordWrap='CJK'
+                ))
+                
+                nik_para = Paragraph(str(nik), ParagraphStyle(
+                    'NikStyle',
+                    fontSize=6,
+                    leading=7,
+                    wordWrap='CJK'
+                ))
+                
+                jabatan_para = Paragraph(str(jabatan), ParagraphStyle(
+                    'JabatanStyle',
+                    fontSize=6,
+                    leading=7,
+                    wordWrap='CJK'
+                ))
+                
+                tempat_para = Paragraph(str(tempat), ParagraphStyle(
+                    'TempatStyle',
+                    fontSize=6,
+                    leading=7,
+                    wordWrap='CJK'
+                ))
+                
+                row = [
+                    str(idx),
+                    nama_para,
+                    nik_para,
+                    jabatan_para,
+                    tempat_para,
+                    '0',
+                    Paragraph('<font color="#c62828"><b>TIDAK SENAM</b></font>', ParagraphStyle(
+                        'StatusBad',
+                        fontSize=6,
+                        alignment=TA_CENTER
+                    ))
+                ]
+                
+                table_data.append(row)
+                
+            except Exception as e:
+                print(f"ERROR processing employee {idx}: {str(e)}")
+                continue
+        
+        col_widths = [
+            0.5*cm,   # NO
+            3*cm,     # NAMA
+            2*cm,     # NIK
+            3*cm,     # JABATAN
+            3*cm,     # TEMPAT TUGAS
+            1*cm,     # TOTAL
+            2*cm      # STATUS
+        ]
+        
+        data_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        data_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#c62828')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,0), 6),
+            ('ALIGN', (0,0), (-1,0), 'CENTER'),
+            ('VALIGN', (0,0), (-1,0), 'MIDDLE'),
+            ('FONTSIZE', (0,1), (-1,-1), 6),
+            ('ALIGN', (0,1), (0,-1), 'CENTER'),
+            ('ALIGN', (5,1), (-1,-1), 'CENTER'),
+            ('VALIGN', (0,1), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.3, colors.grey),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#ffebee')]),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
+            ('LEFTPADDING', (0,0), (-1,-1), 2),
+            ('RIGHTPADDING', (0,0), (-1,-1), 2),
+        ]))
+        
+        story.append(data_table)
+        story.append(Spacer(1, 0.4*cm))
+        
+        # ANALISIS
+        num_months = 0
+        if date_range.get('start') and date_range.get('end'):
+            start_year, start_month = map(int, date_range['start'].split('-'))
+            end_year, end_month = map(int, date_range['end'].split('-'))
+            num_months = (end_year - start_year) * 12 + (end_month - start_month) + 1
+        
+        analysis_data = [
+            ['KETERANGAN', 'NILAI'],
+            ['Total Pegawai Tidak Ikut', f'{len(employees)} orang'],
+            ['Periode', f'{num_months} bulan ({date_range.get("start")} s/d {date_range.get("end")})'],
+            ['Status', 'TIDAK PERNAH IKUT SENAM'],
+        ]
+        
+        analysis_table = Table(analysis_data, colWidths=[10*cm, 5*cm])
+        analysis_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#ffebee')),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 7),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('ALIGN', (1,0), (1,-1), 'CENTER'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.3, colors.grey),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#fafafa')]),
+        ]))
+        
+        story.append(analysis_table)
+        story.append(Spacer(1, 0.25*cm))
+        
+        # KETERANGAN
+        keterangan_style = ParagraphStyle(
+            'Keterangan',
+            parent=styles['Normal'],
+            fontSize=6.5,
+            leading=8,
+            leftIndent=8,
+            rightIndent=8,
+            spaceAfter=2
+        )
+        
+        keterangan_text = f"""
+        <b>KETERANGAN:</b><br/>
+        • Daftar ini menampilkan pegawai yang <font color="#c62828"><b>TIDAK PERNAH</b></font> mengikuti senam dalam periode yang ditentukan<br/>
+        • Periode: {num_months} bulan dari {date_range.get('start')} sampai {date_range.get('end')}<br/>
+        • Perlu tindak lanjut untuk meningkatkan partisipasi pegawai dalam kegiatan senam
+        """
+        
+        keterangan_para = Paragraph(keterangan_text, keterangan_style)
+        keterangan_table = Table([[keterangan_para]], colWidths=[15*cm])
+        keterangan_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#fff3cd')),
+            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#f9a825')),
+            ('LEFTPADDING', (0,0), (-1,-1), 6),
+            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ]))
+        
+        story.append(keterangan_table)
+        story.append(Spacer(1, 0.4*cm))
+        
+        # TANDA TANGAN
+        signature_data = [
+            ['', ''],
+            ['KABAG SDM', 'KASUBAG KEPEGAWAIAN'],
+            ['', ''],
+            ['', ''],
+            ['Dewi Nashrulloh, SKM.M.Kes', 'Rahmawati, SH'],
+            ['NIK: 011205226', 'NIK: 022708322']
+        ]
+        
+        signature_table = Table(signature_data, colWidths=[7.5*cm, 7.5*cm])
+        signature_table.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('FONTSIZE', (0,0), (-1,-1), 7),
+            ('FONTSIZE', (0,1), (-1,1), 7),
+            ('FONTNAME', (0,1), (-1,1), 'Helvetica-Bold'),
+            ('TOPPADDING', (0,1), (-1,1), 0),
+            ('TOPPADDING', (0,4), (-1,5), 3),
+        ]))
+        
+        story.append(signature_table)
+        
+        # FOOTER
+        footer_style = ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontSize=6,
+            alignment=TA_RIGHT,
+            textColor=colors.grey
+        )
+        
+        story.append(Spacer(1, 0.15*cm))
+        story.append(Paragraph(
+            f"Dicetak pada: {datetime.now().strftime('%d %B %Y %H:%M:%S')}",
+            footer_style
+        ))
+        
+        # BUILD PDF
+        doc.build(story)
+        
+        buffer.seek(0)
+        
+        struktur_safe = struktur_lini.replace(' ', '_').replace('/', '-')
+        shift_safe = shift_filter.replace('_', '-')
+        filename = f"pegawai_tidak_ikut_senam_{struktur_safe}_{shift_safe}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        print(f"No Attendance PDF Export error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Terjadi kesalahan: {str(e)}'})
+    
+@app.route('/api/export-attendance-excel', methods=['POST'])
+def export_attendance_excel():
+    """Export Excel untuk pegawai yang IKUT senam"""
+    try:
+        data = request.json
+        employees = data.get('employees', [])
+        date_range = data.get('date_range', {})
+        struktur_lini = data.get('struktur_lini', 'Semua')
+
+        if not employees:
+            return jsonify({'success': False, 'message': 'Tidak ada data pegawai'})
+
+        months_list = []
+        if date_range.get('start') and date_range.get('end'):
+            start_year, start_month = map(int, date_range['start'].split('-'))
+            end_year, end_month = map(int, date_range['end'].split('-'))
+            current_year, current_month = start_year, start_month
+            while (current_year < end_year) or (current_year == end_year and current_month <= end_month):
+                months_list.append(f"{current_year}-{str(current_month).zfill(2)}")
+                current_month += 1
+                if current_month > 12:
+                    current_month = 1
+                    current_year += 1
+
+        rows = []
+        for emp in employees:
+            row = {
+                'NAMA': emp.get('nama', '-'),
+                'NIK': emp.get('nik', '-'),
+                'JABATAN': emp.get('jabatan', '-'),
+                'STRUKTUR_LINI': emp.get('struktur', '-'),
+                'TEMPAT_TUGAS': emp.get('tempat', '-'),
+            }
+            employee_total = 0
+            for month_key in months_list:
+                year, month = month_key.split('-')
+                value = 0
+                if year in emp.get('bulanan', {}):
+                    month_data = emp['bulanan'][year].get(month_key, {})
+                    value = month_data.get('value', 0)
+                row[month_key] = value
+                employee_total += value
+            row['TOTAL'] = employee_total
+            row['STATUS'] = f'IKUT SENAM ({employee_total}x)'
+            rows.append(row)
+
+        df = pd.DataFrame(rows)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Pegawai Ikut Senam')
+            worksheet = writer.sheets['Pegawai Ikut Senam']
+            for column in worksheet.columns:
+                max_length = max((len(str(cell.value)) for cell in column if cell.value), default=0)
+                worksheet.column_dimensions[column[0].column_letter].width = min(max_length + 2, 30)
+
+        output.seek(0)
+        struktur_safe = struktur_lini.replace(' ', '_').replace('/', '-')
+        filename = f"pegawai_ikut_senam_{struktur_safe}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return send_file(output, as_attachment=True, download_name=filename,
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    except Exception as e:
+        print(f"Attendance Excel Export error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Terjadi kesalahan: {str(e)}'})
+
+
+@app.route('/api/export-attendance-pdf', methods=['POST'])
+def export_attendance_pdf():
+    """Export PDF untuk pegawai yang IKUT senam"""
+    try:
+        data = request.json
+        employees = data.get('employees', [])
+        date_range = data.get('date_range', {})
+        shift_filter = data.get('shift_filter', 'all')
+        struktur_lini = data.get('struktur_lini', 'Semua')
+
+        if not employees:
+            return jsonify({'success': False, 'message': 'Tidak ada data pegawai'})
+        if not date_range.get('start') or not date_range.get('end'):
+            return jsonify({'success': False, 'message': 'Rentang waktu belum ditentukan'})
+
+        import copy
+        employees = copy.deepcopy(employees)
+
+        if shift_filter != 'all':
+            employees = [e for e in employees if isinstance(e, dict) and e.get('shift_status', 'non_shift') == shift_filter]
+
+        if not employees:
+            return jsonify({'success': False, 'message': 'Tidak ada data pegawai untuk filter shift yang dipilih'})
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4,
+                                rightMargin=1.2*cm, leftMargin=1.2*cm,
+                                topMargin=0.8*cm, bottomMargin=1.5*cm)
+        story = []
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'],
+                                     fontSize=11, alignment=TA_CENTER, spaceAfter=3,
+                                     textColor=colors.HexColor('#1b5e20'), fontName='Helvetica-Bold')
+        subtitle_style = ParagraphStyle('SubtitleStyle', parent=styles['Heading2'],
+                                        fontSize=9, alignment=TA_CENTER, spaceAfter=6,
+                                        textColor=colors.HexColor('#2e7d32'), fontName='Helvetica-Bold')
+
+        story.append(Paragraph("RUMAH SAKIT ISLAM SITI KHADIJAH PALEMBANG", title_style))
+        story.append(Paragraph("DAFTAR PEGAWAI YANG IKUT SENAM", subtitle_style))
+        story.append(Spacer(1, 0.2*cm))
+
+        shift_text_map = {'all': 'Semua (Shift & Non-Shift)', 'shift': 'Shift', 'non_shift': 'Non-Shift'}
+        shift_text = shift_text_map.get(shift_filter, 'Semua')
+
+        info_data = [
+            ['STRUKTUR LINI', ':', struktur_lini, 'FILTER SHIFT', ':', shift_text],
+            ['JUMLAH PEGAWAI', ':', str(len(employees)), 'PERIODE', ':',
+             f"{date_range.get('start', '-')} s/d {date_range.get('end', '-')}"]
+        ]
+        info_table = Table(info_data, colWidths=[2.8*cm, 0.3*cm, 4*cm, 2.8*cm, 0.3*cm, 4*cm])
+        info_table.setStyle(TableStyle([
+            ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+            ('FONTNAME', (3,0), (3,-1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 7),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+            ('TOPPADDING', (0,0), (-1,-1), 2),
+        ]))
+        story.append(info_table)
+        story.append(Spacer(1, 0.3*cm))
+
+        # Hitung total kehadiran per pegawai dalam rentang
+        months_list = []
+        start_year, start_month = map(int, date_range['start'].split('-'))
+        end_year, end_month = map(int, date_range['end'].split('-'))
+        current_year, current_month = start_year, start_month
+        while (current_year < end_year) or (current_year == end_year and current_month <= end_month):
+            months_list.append(f"{current_year}-{str(current_month).zfill(2)}")
+            current_month += 1
+            if current_month > 12:
+                current_month = 1
+                current_year += 1
+        num_months = len(months_list)
+
+        header = ['NO', 'NAMA', 'NIK', 'JABATAN', 'TEMPAT TUGAS', 'TOTAL', 'STATUS']
+        table_data = [header]
+
+        for idx, emp in enumerate(employees, 1):
+            if not isinstance(emp, dict):
+                continue
+
+            # Hitung total dalam rentang
+            emp_total = 0
+            for month_key in months_list:
+                year = month_key.split('-')[0]
+                bulanan = emp.get('bulanan', {})
+                if year in bulanan:
+                    month_data = bulanan[year].get(month_key, {})
+                    emp_total += int(month_data.get('value', 0) or 0)
+
+            cell_style = ParagraphStyle('cs', fontSize=6, leading=7, wordWrap='CJK')
+            row = [
+                str(idx),
+                Paragraph(str(emp.get('nama', '-')), cell_style),
+                Paragraph(str(emp.get('nik', '-')), cell_style),
+                Paragraph(str(emp.get('jabatan', '-')), cell_style),
+                Paragraph(str(emp.get('tempat', '-')), cell_style),
+                str(emp_total),
+                Paragraph(f'<font color="#1b5e20"><b>{emp_total}x SENAM</b></font>',
+                          ParagraphStyle('st', fontSize=6, alignment=TA_CENTER))
+            ]
+            table_data.append(row)
+
+        col_widths = [0.5*cm, 3*cm, 2*cm, 3*cm, 3*cm, 1*cm, 2*cm]
+        data_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        data_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2e7d32')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,0), 6),
+            ('ALIGN', (0,0), (-1,0), 'CENTER'),
+            ('VALIGN', (0,0), (-1,0), 'MIDDLE'),
+            ('FONTSIZE', (0,1), (-1,-1), 6),
+            ('ALIGN', (0,1), (0,-1), 'CENTER'),
+            ('ALIGN', (5,1), (-1,-1), 'CENTER'),
+            ('VALIGN', (0,1), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.3, colors.grey),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#e8f5e9')]),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
+            ('LEFTPADDING', (0,0), (-1,-1), 2),
+            ('RIGHTPADDING', (0,0), (-1,-1), 2),
+        ]))
+        story.append(data_table)
+        story.append(Spacer(1, 0.4*cm))
+
+        # Total kehadiran keseluruhan
+        grand_total = sum(
+            sum(int(bulanan.get(m, {}).get('value', 0) or 0)
+                for year_data in emp.get('bulanan', {}).values()
+                for m, bulanan in [(mk, year_data) for mk in months_list if mk.split('-')[0] in emp.get('bulanan', {})])
+            for emp in employees if isinstance(emp, dict)
+        )
+
+        analysis_data = [
+            ['KETERANGAN', 'NILAI'],
+            ['Total Pegawai Ikut Senam', f'{len(employees)} orang'],
+            ['Periode', f'{num_months} bulan ({date_range.get("start")} s/d {date_range.get("end")})'],
+            ['Status', 'AKTIF MENGIKUTI SENAM'],
+        ]
+        analysis_table = Table(analysis_data, colWidths=[10*cm, 5*cm])
+        analysis_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#e8f5e9')),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 7),
+            ('ALIGN', (1,0), (1,-1), 'CENTER'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.3, colors.grey),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#fafafa')]),
+        ]))
+        story.append(analysis_table)
+        story.append(Spacer(1, 0.25*cm))
+
+        keterangan_style = ParagraphStyle('Ket', parent=styles['Normal'],
+                                          fontSize=6.5, leading=8, leftIndent=8, rightIndent=8)
+        keterangan_text = f"""
+        <b>KETERANGAN:</b><br/>
+        • Daftar ini menampilkan pegawai yang <font color="#1b5e20"><b>AKTIF</b></font> mengikuti senam dalam periode yang ditentukan<br/>
+        • Periode: {num_months} bulan dari {date_range.get('start')} sampai {date_range.get('end')}<br/>
+        """
+        keterangan_para = Paragraph(keterangan_text, keterangan_style)
+        keterangan_table = Table([[keterangan_para]], colWidths=[15*cm])
+        keterangan_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#e8f5e9')),
+            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#2e7d32')),
+            ('LEFTPADDING', (0,0), (-1,-1), 6),
+            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ]))
+        story.append(keterangan_table)
+        story.append(Spacer(1, 0.4*cm))
+
+        signature_data = [
+            ['', ''],
+            ['KABAG SDM', 'KASUBAG KEPEGAWAIAN'],
+            ['', ''], ['', ''],
+            ['Dewi Nashrulloh, SKM.M.Kes', 'Rahmawati, SH'],
+            ['NIK: 011205226', 'NIK: 022708322']
+        ]
+        signature_table = Table(signature_data, colWidths=[7.5*cm, 7.5*cm])
+        signature_table.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('FONTSIZE', (0,0), (-1,-1), 7),
+            ('FONTNAME', (0,1), (-1,1), 'Helvetica-Bold'),
+            ('TOPPADDING', (0,4), (-1,5), 3),
+        ]))
+        story.append(signature_table)
+        story.append(Spacer(1, 0.15*cm))
+        story.append(Paragraph(f"Dicetak pada: {datetime.now().strftime('%d %B %Y %H:%M:%S')}",
+                               ParagraphStyle('Footer', parent=styles['Normal'], fontSize=6,
+                                              alignment=TA_RIGHT, textColor=colors.grey)))
+
+        doc.build(story)
+        buffer.seek(0)
+
+        struktur_safe = struktur_lini.replace(' ', '_').replace('/', '-')
+        shift_safe = shift_filter.replace('_', '-')
+        filename = f"pegawai_ikut_senam_{struktur_safe}_{shift_safe}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
+
+    except Exception as e:
+        print(f"Attendance PDF Export error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Terjadi kesalahan: {str(e)}'})
+    
 
 @app.route('/api/export-group-pdf', methods=['POST'])
 def export_group_pdf():
