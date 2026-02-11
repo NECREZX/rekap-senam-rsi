@@ -13,6 +13,8 @@ let activeYearFilter = "all";
 let selectedFile = null;
 let uploadInProgress = false;
 let selectedEmployees = new Map();
+let noAttendanceEmployees = [];
+let attendanceEmployees = [];
 let currentSort = { column: "nama", direction: "asc" };
 
 // Filter states
@@ -219,23 +221,46 @@ function renderKPI() {
   const totalPegawai = filteredData.length;
 
   let totalSenam = 0;
-  if (activeYearFilter && activeYearFilter !== "all") {
-    totalSenam = filteredData.reduce(
-      (sum, d) => sum + (d.tahunan[activeYearFilter] || 0),
-      0
-    );
-  } else {
-    totalSenam = filteredData.reduce((sum, d) => sum + (d.total_all || 0), 0);
-  }
+  let totalPegawaiIkut = 0;
+
+  filteredData.forEach((d) => {
+    let attendance = 0;
+
+    if (activeYearFilter && activeYearFilter !== "all") {
+      attendance = d.tahunan[activeYearFilter] || 0;
+    } else if (
+      dateRangeFilter.active &&
+      dateRangeFilter.start &&
+      dateRangeFilter.end
+    ) {
+      attendance = getAttendanceInRange(
+        d,
+        dateRangeFilter.start,
+        dateRangeFilter.end
+      );
+    } else {
+      attendance = d.total_all || 0;
+    }
+
+    totalSenam += attendance;
+
+    if (attendance > 0) {
+      totalPegawaiIkut++;
+    }
+  });
 
   const rataSenam =
     totalPegawai > 0 ? (totalSenam / totalPegawai).toFixed(1) : 0;
 
+  const totalTidakIkut = calculateNoAttendanceEmployees();
+
   document.getElementById("totalPegawai").textContent =
-    totalPegawai.toLocaleString();
+    totalPegawaiIkut.toLocaleString();
   document.getElementById("totalSenam").textContent =
     totalSenam.toLocaleString();
   document.getElementById("rataSenam").textContent = rataSenam;
+  document.getElementById("totalTidakIkut").textContent =
+    totalTidakIkut.toLocaleString();
 
   const years = Object.keys(filteredData[0]?.tahunan || {});
   if (years.length > 0) {
@@ -830,7 +855,6 @@ function applyFilters() {
   filteredData = [...dataGlobal];
   filteredDataForChart = [...dataGlobal];
 
-  // Apply search filter
   if (searchTerm) {
     filteredData = filteredData.filter(
       (item) =>
@@ -849,7 +873,6 @@ function applyFilters() {
     );
   }
 
-  // Apply dropdown filters
   if (tempat) {
     filteredData = filteredData.filter((item) => item.tempat === tempat);
     filteredDataForChart = filteredDataForChart.filter(
@@ -874,13 +897,6 @@ function applyFilters() {
     filteredDataForChart = filteredDataForChart.filter(
       (item) => item.struktur === struktur
     );
-  }
-
-  if (tahun && tahun !== "all") {
-    filteredData = filteredData.filter((item) => {
-      const tahunValue = item.tahunan[tahun] || 0;
-      return tahunValue > 0;
-    });
   }
 
   currentPage = 1;
@@ -1042,6 +1058,8 @@ function applyDateRange() {
   updateDateRangeText();
   hideDateRangeDropdown();
 
+  renderDashboard();
+
   if (currentDetailData) {
     updateMonthlyDateRangeInfo();
     renderMonthlyData();
@@ -1057,7 +1075,7 @@ function applyDateRange() {
 
 function clearDateRange() {
   const startDate = new Date(2022, 0, 1);
-  const endDate = new Date(2032, 11, 1);
+  const endDate = new Date(2032, 0, 1);
 
   dateRangeFilter = {
     start: formatDate(startDate),
@@ -1071,12 +1089,60 @@ function clearDateRange() {
   updateDateRangeText();
   hideDateRangeDropdown();
 
+  renderDashboard();
+
   if (currentDetailData) {
     updateMonthlyDateRangeInfo();
     renderMonthlyData();
   }
 
   showToast("Filter rentang waktu direset", "info");
+}
+
+function toggleModalDateRangeDropdown() {
+  const dropdown = document.getElementById("modalDateRangeDropdown");
+  const isMobile = window.innerWidth <= 768;
+
+  if (dropdown.classList.contains("show")) {
+    dropdown.classList.remove("show");
+    if (isMobile) {
+      removeBackdrop();
+    }
+  } else {
+    dropdown.classList.add("show");
+    if (isMobile) {
+      createBackdrop();
+    }
+  }
+}
+
+// Fungsi untuk membuat backdrop
+function createBackdrop() {
+  // Hapus backdrop lama jika ada
+  removeBackdrop();
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "date-range-backdrop show";
+  backdrop.id = "modalDateRangeBackdrop";
+  backdrop.onclick = function () {
+    closeModalDateRangeDropdown();
+  };
+  document.body.appendChild(backdrop);
+}
+
+// Fungsi untuk menghapus backdrop
+function removeBackdrop() {
+  const backdrop = document.getElementById("modalDateRangeBackdrop");
+  if (backdrop) {
+    backdrop.remove();
+  }
+}
+
+// Fungsi untuk menutup dropdown
+function closeModalDateRangeDropdown() {
+  const dropdown = document.getElementById("modalDateRangeDropdown");
+  dropdown.classList.remove("show");
+  removeBackdrop();
 }
 
 // ============================================
@@ -1495,6 +1561,267 @@ function renderMonthlyData() {
   }
 }
 
+async function exportNoAttendanceExcel() {
+  try {
+    if (noAttendanceEmployees.length === 0) {
+      showToast("Tidak ada pegawai yang tidak ikut senam", "info");
+      return;
+    }
+
+    if (
+      !dateRangeFilter.active ||
+      !dateRangeFilter.start ||
+      !dateRangeFilter.end
+    ) {
+      showToast("Silakan pilih rentang waktu terlebih dahulu", "error");
+      return;
+    }
+
+    showLoading(
+      `Mengexport Excel untuk ${noAttendanceEmployees.length} pegawai yang tidak ikut senam...`
+    );
+
+    const strukturText =
+      strukturLiniFilter !== "all" ? strukturLiniFilter : "Semua";
+
+    const response = await fetch("/api/export-no-attendance-excel", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        employees: noAttendanceEmployees,
+        date_range: dateRangeFilter,
+        shift_status: shiftStatus,
+        struktur_lini: strukturText,
+      }),
+    });
+
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const filename = `pegawai_tidak_ikut_senam_${strukturText.replace(
+        / /g,
+        "_"
+      )}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      showToast(
+        `✓ Excel berhasil diekspor untuk ${noAttendanceEmployees.length} pegawai yang tidak ikut senam!`,
+        "success"
+      );
+    } else {
+      const error = await response.json();
+      showToast(error.message || "Gagal mengekspor Excel", "error");
+    }
+  } catch (error) {
+    console.error("Export error:", error);
+    showToast("Terjadi kesalahan saat mengekspor Excel", "error");
+  } finally {
+    hideLoading();
+  }
+}
+
+// Fungsi untuk export PDF pegawai tidak ikut senam
+async function exportNoAttendancePDF() {
+  try {
+    if (noAttendanceEmployees.length === 0) {
+      showToast("Tidak ada pegawai yang tidak ikut senam", "info");
+      return;
+    }
+
+    if (
+      !dateRangeFilter.active ||
+      !dateRangeFilter.start ||
+      !dateRangeFilter.end
+    ) {
+      showToast("Silakan pilih rentang waktu terlebih dahulu", "error");
+      return;
+    }
+
+    showLoading(
+      `Membuat PDF untuk ${noAttendanceEmployees.length} pegawai yang tidak ikut senam...`
+    );
+
+    const strukturText =
+      strukturLiniFilter !== "all" ? strukturLiniFilter : "Semua";
+
+    const response = await fetch("/api/export-no-attendance-pdf", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        employees: noAttendanceEmployees,
+        date_range: dateRangeFilter,
+        shift_filter: groupExportShiftFilter || "all",
+        struktur_lini: strukturText,
+      }),
+    });
+
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const filename = `pegawai_tidak_ikut_senam_${strukturText.replace(
+        / /g,
+        "_"
+      )}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      showToast(
+        `✓ PDF berhasil diekspor untuk ${noAttendanceEmployees.length} pegawai yang tidak ikut senam!`,
+        "success"
+      );
+    } else {
+      const error = await response.json();
+      showToast(error.message || "Gagal mengekspor PDF", "error");
+    }
+  } catch (error) {
+    console.error("Export error:", error);
+    showToast("Terjadi kesalahan saat mengekspor PDF", "error");
+  } finally {
+    hideLoading();
+  }
+}
+
+async function exportAttendanceExcel() {
+  try {
+    if (attendanceEmployees.length === 0) {
+      showToast("Tidak ada pegawai yang ikut senam", "info");
+      return;
+    }
+
+    if (
+      !dateRangeFilter.active ||
+      !dateRangeFilter.start ||
+      !dateRangeFilter.end
+    ) {
+      showToast("Silakan pilih rentang waktu terlebih dahulu", "error");
+      return;
+    }
+
+    showLoading(
+      `Mengexport Excel untuk ${attendanceEmployees.length} pegawai yang ikut senam...`
+    );
+
+    const strukturText =
+      strukturLiniFilter !== "all" ? strukturLiniFilter : "Semua";
+
+    const response = await fetch("/api/export-attendance-excel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employees: attendanceEmployees,
+        date_range: dateRangeFilter,
+        shift_status: shiftStatus,
+        struktur_lini: strukturText,
+      }),
+    });
+
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `pegawai_ikut_senam_${strukturText.replace(
+        / /g,
+        "_"
+      )}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast(
+        `✓ Excel berhasil diekspor untuk ${attendanceEmployees.length} pegawai yang ikut senam!`,
+        "success"
+      );
+    } else {
+      const error = await response.json();
+      showToast(error.message || "Gagal mengekspor Excel", "error");
+    }
+  } catch (error) {
+    console.error("Export error:", error);
+    showToast("Terjadi kesalahan saat mengekspor Excel", "error");
+  } finally {
+    hideLoading();
+  }
+}
+
+async function exportAttendancePDF() {
+  try {
+    if (attendanceEmployees.length === 0) {
+      showToast("Tidak ada pegawai yang ikut senam", "info");
+      return;
+    }
+
+    if (
+      !dateRangeFilter.active ||
+      !dateRangeFilter.start ||
+      !dateRangeFilter.end
+    ) {
+      showToast("Silakan pilih rentang waktu terlebih dahulu", "error");
+      return;
+    }
+
+    showLoading(
+      `Membuat PDF untuk ${attendanceEmployees.length} pegawai yang ikut senam...`
+    );
+
+    const strukturText =
+      strukturLiniFilter !== "all" ? strukturLiniFilter : "Semua";
+
+    const response = await fetch("/api/export-attendance-pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employees: attendanceEmployees,
+        date_range: dateRangeFilter,
+        shift_filter: groupExportShiftFilter || "all",
+        struktur_lini: strukturText,
+      }),
+    });
+
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `pegawai_ikut_senam_${strukturText.replace(
+        / /g,
+        "_"
+      )}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast(
+        `✓ PDF berhasil diekspor untuk ${attendanceEmployees.length} pegawai yang ikut senam!`,
+        "success"
+      );
+    } else {
+      const error = await response.json();
+      showToast(error.message || "Gagal mengekspor PDF", "error");
+    }
+  } catch (error) {
+    console.error("Export error:", error);
+    showToast("Terjadi kesalahan saat mengekspor PDF", "error");
+  } finally {
+    hideLoading();
+  }
+}
+
 async function exportEmployeePDF() {
   if (!currentDetailData) {
     showToast("Tidak ada data pegawai yang dipilih", "error");
@@ -1725,6 +2052,55 @@ function showSelectedEmployees() {
     console.log(`${id}: ${emp.nama} - ${emp.tempat} - ${emp.struktur}`);
   });
   console.log("========================");
+}
+
+function calculateNoAttendanceEmployees() {
+  noAttendanceEmployees = [];
+  attendanceEmployees = []; // TAMBAHAN
+
+  filteredData.forEach((emp) => {
+    let totalAttendance = 0;
+
+    if (activeYearFilter && activeYearFilter !== "all") {
+      totalAttendance = emp.tahunan[activeYearFilter] || 0;
+    } else if (
+      dateRangeFilter.active &&
+      dateRangeFilter.start &&
+      dateRangeFilter.end
+    ) {
+      totalAttendance = getAttendanceInRange(
+        emp,
+        dateRangeFilter.start,
+        dateRangeFilter.end
+      );
+    } else {
+      totalAttendance = emp.total_all || 0;
+    }
+
+    if (totalAttendance === 0) {
+      noAttendanceEmployees.push(emp);
+    } else {
+      attendanceEmployees.push(emp);
+    }
+  });
+
+  return noAttendanceEmployees.length;
+}
+
+function getAttendanceInRange(employee, startDate, endDate) {
+  let total = 0;
+
+  for (const year in employee.bulanan) {
+    for (const [monthKey, monthData] of Object.entries(
+      employee.bulanan[year]
+    )) {
+      if (monthKey >= startDate && monthKey <= endDate) {
+        total += monthData.value || 0;
+      }
+    }
+  }
+
+  return total;
 }
 
 // ============================================
@@ -2254,6 +2630,7 @@ function applyModalDateRange() {
 
   updateMonthlyDateRangeInfo();
   renderMonthlyData();
+  closeModalDateRangeDropdown();
 
   showToast(
     `Filter diterapkan: ${formatDateDisplay(start)} - ${formatDateDisplay(
@@ -2278,6 +2655,7 @@ function clearModalDateRange() {
 
   updateMonthlyDateRangeInfo();
   renderMonthlyData();
+  closeModalDateRangeDropdown();
 
   showToast("Filter rentang waktu direset", "info");
 }
@@ -2325,3 +2703,7 @@ window.exportSelectedExcel = exportSelectedExcel;
 window.exportSelectedPDF = exportSelectedPDF;
 window.updateSelectAllState = updateSelectAllState;
 window.showSelectedEmployees = showSelectedEmployees;
+window.exportNoAttendanceExcel = exportNoAttendanceExcel;
+window.exportNoAttendancePDF = exportNoAttendancePDF;
+window.exportAttendanceExcel = exportAttendanceExcel;
+window.exportAttendancePDF = exportAttendancePDF;
