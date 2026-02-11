@@ -190,6 +190,37 @@ body {
   display: block;
 }
 
+.kpi-card .fa-user-times {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Dropdown divider untuk memisahkan menu export */
+.dropdown-divider {
+  height: 1px;
+  background-color: #e9ecef;
+  margin: 5px 0;
+}
+
+/* Style khusus untuk menu export pegawai tidak ikut */
+.dropdown-item[style*="color: #e74c3c"] {
+  font-weight: 600;
+}
+
+.dropdown-item[style*="color: #e74c3c"]:hover {
+  background: #ffebee;
+  color: #c62828 !important;
+}
+
 /* ============================================
      BUTTONS
      ============================================ */
@@ -832,6 +863,35 @@ table {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.kpi-card:has(.fa-user-times) {
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+#totalTidakIkut {
+  position: relative;
+}
+
+#totalTidakIkut:not(:empty):after {
+  content: "";
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .row-checkbox {
@@ -1486,6 +1546,40 @@ tbody tr:last-child td {
   min-width: 200px;
 }
 
+.modal-date-range-control {
+  position: relative;
+}
+
+.modal-date-range-control .date-range-dropdown {
+  display: none;
+  min-width: 280px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 15px;
+  border: 1px solid #dee2e6;
+}
+
+.modal-date-range-control .date-range-dropdown.show {
+  display: block;
+}
+
+/* TAMBAHAN BARU: Backdrop untuk mobile */
+.date-range-backdrop {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9998;
+}
+
+.date-range-backdrop.show {
+  display: block;
+}
+
 .year-selector label {
   font-weight: 600;
   font-size: 14px;
@@ -1803,6 +1897,10 @@ tbody tr:last-child td {
     max-width: 95%;
   }
 
+  .kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
   .header-text h1 {
     font-size: 24px;
   }
@@ -1828,7 +1926,7 @@ tbody tr:last-child td {
   }
 
   .kpi-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
   }
 
   .detail-grid {
@@ -1913,9 +2011,59 @@ tbody tr:last-child td {
     padding: 10px;
   }
 
+  .monthly-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    position: relative; /* PENTING */
+  }
+
+  .modal-date-range-control {
+    width: 100%;
+    position: static; /* UBAH dari relative */
+  }
+
+  .modal-date-range-control .btn {
+    width: 100%;
+  }
+
+  .modal-date-range-control .date-range-dropdown {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    right: auto;
+    width: 90vw;
+    max-width: 320px;
+    z-index: 9999;
+    margin: 0; /* Reset margin */
+  }
+
+  .modal-date-range-control .date-range-dropdown.show {
+    animation: modalSlideIn 0.3s ease-out;
+  }
+
   .header {
     padding: 15px;
     margin-bottom: 15px;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-card {
+    padding: 15px;
+  }
+
+  .kpi-icon {
+    width: 45px;
+    height: 45px;
+    font-size: 22px;
+  }
+
+  .kpi-content h2 {
+    font-size: 22px;
   }
 
   .header-main {
