@@ -19,13 +19,35 @@ import numpy as np
 from collections import OrderedDict
 import math
 
+from flask_sqlalchemy import SQLAlchemy
+
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
-# Konfigurasi
+# Konfigurasi Database (Mendukung Render / Local SQLite)
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///data/senam_data.db')
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+# Model Database
+class UploadData(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    data_json = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+    count = db.Column(db.Integer, default=0)
+
+# Inisialisasi Database
+with app.app_context():
+    db.create_all()
+
+# Konfigurasi Folder
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
-DATA_FILE = 'data/senam_data.json'
-TEMP_DATA_FILE = 'data/current_upload.json'
+
 
 # Buat folder
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -242,36 +264,43 @@ def excel_to_json(file_path):
 
 def save_temp_data(data):
     try:
-        with open(TEMP_DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump({
-                'data': data,
-                'timestamp': datetime.now().isoformat(),
-                'count': len(data)
-            }, f, ensure_ascii=False, indent=2)
+        # Hapus data lama karena ini adalah penyimpanan sementara per upload
+        UploadData.query.delete()
+        
+        # Simpan data ke database format JSON text
+        new_record = UploadData(
+            data_json=json.dumps(data, ensure_ascii=False),
+            timestamp=datetime.now(),
+            count=len(data)
+        )
+        db.session.add(new_record)
+        db.session.commit()
         return True
     except Exception as e:
-        print(f"Error saving temp data: {e}")
+        print(f"Error saving temp data to DB: {e}")
+        db.session.rollback()
         return False
 
 def load_temp_data():
     try:
-        if os.path.exists(TEMP_DATA_FILE):
-            with open(TEMP_DATA_FILE, 'r', encoding='utf-8') as f:
-                content = json.load(f)
-                timestamp = datetime.fromisoformat(content['timestamp'])
-                if datetime.now() - timestamp < timedelta(hours=24):
-                    return content['data']
+        record = UploadData.query.order_by(UploadData.id.desc()).first()
+        if record:
+            # Gunakan data jika usianya kurang dari 24 jam
+            if datetime.now() - record.timestamp < timedelta(hours=24):
+                return json.loads(record.data_json)
         return []
     except Exception as e:
-        print(f"Error loading temp data: {e}")
+        print(f"Error loading temp data from DB: {e}")
         return []
 
 def clear_temp_data():
     try:
-        if os.path.exists(TEMP_DATA_FILE):
-            os.remove(TEMP_DATA_FILE)
+        UploadData.query.delete()
+        db.session.commit()
         return True
-    except:
+    except Exception as e:
+        print(f"Error clearing temp data: {e}")
+        db.session.rollback()
         return False
 
 @app.route('/')
