@@ -279,6 +279,12 @@ def excel_to_json(file_path):
 
 def save_temp_data(data):
     try:
+        # Gunakan create_all disini juga untuk memastikan tabel dibuat (jika di awal gagal)
+        try:
+            db.create_all()
+        except:
+            pass
+            
         # Hapus data lama karena ini adalah penyimpanan sementara per upload
         UploadData.query.delete()
         
@@ -290,11 +296,11 @@ def save_temp_data(data):
         )
         db.session.add(new_record)
         db.session.commit()
-        return True
+        return True, ""
     except Exception as e:
         print(f"Error saving temp data to DB: {e}")
         db.session.rollback()
-        return False
+        return False, str(e)
 
 def load_temp_data():
     try:
@@ -363,7 +369,9 @@ def upload_file():
             shutil.rmtree(temp_dir)
             return jsonify({'success': False, 'message': 'Tidak ada data'})
         
-        if save_temp_data(data):
+        success, error_msg = save_temp_data(data)
+        
+        if success:
             shutil.rmtree(temp_dir)
             return jsonify({
                 'success': True,
@@ -373,7 +381,18 @@ def upload_file():
             })
         else:
             shutil.rmtree(temp_dir)
-            return jsonify({'success': False, 'message': 'Gagal menyimpan data'})
+            
+            # Format pesan error agar ramah pengguna
+            if "password authentication failed" in error_msg:
+                error_pesan = "Koneksi Database Ditolak: Password Supabase Anda salah. Tolong periksa ulang Environment Variable DATABASE_URL di Vercel."
+            elif "does not exist" in error_msg:
+                error_pesan = "Tabel database belum siap. Coba refresh Vercel (Redeploy)."
+            elif "server closed the connection" in error_msg:
+                error_pesan = "Koneksi ke Supabase terputus. Pastikan link DATABASE_URL benar."
+            else:
+                error_pesan = f"Gagal menyimpan ke database: {error_msg}"
+                
+            return jsonify({'success': False, 'message': error_pesan})
             
     except Exception as e:
         print(f"Upload error: {str(e)}")
