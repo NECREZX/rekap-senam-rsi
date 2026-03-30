@@ -6,3 +6,5 @@ reportlab
 werkzeug
 gunicorn
 xlrd
+Flask-SQLAlchemy==3.1.1
+psycopg2-binary==2.9.9
