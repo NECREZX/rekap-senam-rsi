@@ -23,8 +23,16 @@ from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
-# Konfigurasi Database (Mendukung Render / Local SQLite)
-database_url = os.environ.get('DATABASE_URL', 'sqlite:///data/senam_data.db')
+# Deteksi environment Vercel
+is_vercel = os.environ.get('VERCEL') == '1' or os.environ.get('VERCEL_ENV')
+
+# Konfigurasi Database (Mendukung Render / Vercel / Local SQLite)
+if is_vercel:
+    fallback_db = 'sqlite:////tmp/senam_data.db'
+else:
+    fallback_db = 'sqlite:///data/senam_data.db'
+    
+database_url = os.environ.get('DATABASE_URL', fallback_db)
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
@@ -41,20 +49,27 @@ class UploadData(db.Model):
     count = db.Column(db.Integer, default=0)
 
 # Inisialisasi Database
-with app.app_context():
-    db.create_all()
+try:
+    with app.app_context():
+        db.create_all()
+except Exception as e:
+    print(f"Bypass DB init error (Read-Only FS): {e}")
 
 # Konfigurasi Folder
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = '/tmp/uploads' if is_vercel else 'uploads'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 
+# Buat folder (Bungkus ke dalam try-except agar tidak error di environment Read-Only Vercel)
+try:
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    if not is_vercel:
+        os.makedirs('static/css', exist_ok=True)
+        os.makedirs('static/js', exist_ok=True)
+        os.makedirs('data', exist_ok=True)
+        os.makedirs('templates', exist_ok=True)
+except Exception as e:
+    print(f"Skipping directory creation (Read-Only FS): {e}")
 
-# Buat folder
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs('static/css', exist_ok=True)
-os.makedirs('static/js', exist_ok=True)
-os.makedirs('data', exist_ok=True)
-os.makedirs('templates', exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
