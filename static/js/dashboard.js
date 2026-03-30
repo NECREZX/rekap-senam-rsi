@@ -154,6 +154,7 @@ async function loadData() {
 
     dataGlobal = await response.json();
     filteredData = [...dataGlobal];
+    filteredDataForChart = [...dataGlobal];
 
     updateDataStatus();
     renderDashboard();
