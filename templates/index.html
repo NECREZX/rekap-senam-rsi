@@ -198,6 +198,50 @@
         z-index: 99999;
       }
     }
+
+    .dropdown-checkbox-container {
+      position: relative;
+    }
+    .dropdown-checkbox-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 100%;
+      min-width: 200px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      padding: 10px;
+      border: 1px solid #dee2e6;
+      z-index: 1000;
+      max-height: 250px;
+      overflow-y: auto;
+      margin-top: 5px;
+    }
+    .dropdown-checkbox-menu.show {
+      display: block;
+    }
+    .dropdown-checkbox-menu label {
+      display: flex !important;
+      align-items: center !important;
+      margin-bottom: 0 !important;
+      padding: 8px 5px !important;
+      cursor: pointer;
+      font-weight: 500 !important;
+      font-size: 14px;
+      color: #333;
+    }
+    .dropdown-checkbox-menu label:hover {
+      background: #f8f9fa;
+      border-radius: 4px;
+    }
+    .dropdown-checkbox-menu input[type="checkbox"] {
+      margin-right: 10px;
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
   </style>
   <body>
     <!-- Loading Overlay -->
@@ -443,15 +487,32 @@
               <option value="">Semua Kelompok</option>
             </select>
           </div>
-          <div class="filter-group">
+          <div class="filter-group dropdown-checkbox-group">
             <label><i class="fas fa-id-badge"></i> Status Pegawai</label>
-            <select
-              id="filterStatus"
-              class="form-control"
-              onchange="applyFilters()"
-            >
-              <option value="">Semua Status</option>
-            </select>
+            <div class="dropdown-checkbox-container">
+              <button 
+                type="button" 
+                class="form-control" 
+                id="filterStatusBtn" 
+                style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #fff; cursor: pointer; text-align: left;" 
+                onclick="event.stopPropagation(); document.getElementById('filterStatusDropdown').classList.toggle('show')"
+              >
+                <span id="filterStatusText" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 85%;">Semua Status</span>
+                <i class="fas fa-chevron-down" style="color: #6c757d;"></i>
+              </button>
+              <div class="dropdown-checkbox-menu" id="filterStatusDropdown">
+                <div class="checkbox-item">
+                  <label>
+                    <input type="checkbox" id="filterStatusAll" onchange="toggleAllStatusFilters()" checked>
+                    Semua Status
+                  </label>
+                </div>
+                <div class="dropdown-divider" style="margin: 8px 0; border-top: 1px solid #dee2e6;"></div>
+                <div id="filterStatusOptions">
+                  <!-- Checkboxes populated dynamically -->
+                </div>
+              </div>
+            </div>
           </div>
           <div class="filter-group">
             <label><i class="fas fa-calendar"></i> Tahun</label>
