@@ -333,6 +333,15 @@ def api_data():
     data = load_temp_data()
     return jsonify(data)
 
+@app.route('/api/ping')
+def ping():
+    try:
+        from sqlalchemy import text
+        db.session.execute(text('SELECT 1'))
+        return jsonify({"status": "ok", "message": "Database is awake!"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     try:
