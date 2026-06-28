@@ -433,7 +433,7 @@ body {
   border: 1px solid #e9ecef;
   display: none;
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .filter-header {
