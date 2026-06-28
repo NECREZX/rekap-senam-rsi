@@ -90,10 +90,22 @@ function setupEventListeners() {
   // Click outside dropdowns
   document.addEventListener("click", function (e) {
     if (!e.target.closest(".dropdown")) {
-      closeAllDropdowns();
+      if (typeof closeAllDropdowns === "function") {
+        closeAllDropdowns();
+      } else {
+        document.querySelectorAll(".dropdown-menu.show").forEach((menu) => {
+          menu.classList.remove("show");
+        });
+      }
     }
     if (!e.target.closest(".date-range-container")) {
-      hideDateRangeDropdown();
+      if (typeof hideDateRangeDropdown === "function") hideDateRangeDropdown();
+    }
+    if (!e.target.closest(".dropdown-checkbox-group")) {
+      const statusDropdown = document.getElementById("filterStatusDropdown");
+      if (statusDropdown) {
+        statusDropdown.classList.remove("show");
+      }
     }
   });
 }
@@ -723,14 +735,22 @@ function populateFilters() {
     kelompokSelect.appendChild(option);
   });
 
-  const statusSelect = document.getElementById("filterStatus");
-  statusSelect.innerHTML = '<option value="">Semua Status</option>';
-  [...statusSet].sort().forEach((status) => {
-    const option = document.createElement("option");
-    option.value = status;
-    option.textContent = status;
-    statusSelect.appendChild(option);
-  });
+  const statusOptions = document.getElementById("filterStatusOptions");
+  if (statusOptions) {
+    statusOptions.innerHTML = '';
+    [...statusSet].sort().forEach((status) => {
+      const div = document.createElement("div");
+      div.className = "checkbox-item";
+      div.style.marginBottom = "8px";
+      div.innerHTML = `
+        <label>
+          <input type="checkbox" class="status-checkbox" value="${status}" onchange="toggleIndividualStatusFilter()" checked>
+          ${status}
+        </label>
+      `;
+      statusOptions.appendChild(div);
+    });
+  }
 
   // NEW: Populate filter struktur lini
   const strukturSelect = document.getElementById("filterStruktur");
@@ -742,6 +762,52 @@ function populateFilters() {
       option.textContent = struktur;
       strukturSelect.appendChild(option);
     });
+  }
+}
+
+function toggleAllStatusFilters() {
+  const isChecked = document.getElementById("filterStatusAll").checked;
+  const checkboxes = document.querySelectorAll(".status-checkbox");
+  checkboxes.forEach(cb => cb.checked = isChecked);
+  updateStatusFilterText();
+  applyFilters();
+}
+
+function toggleIndividualStatusFilter() {
+  const allCheckboxes = document.querySelectorAll(".status-checkbox");
+  const checkedCheckboxes = document.querySelectorAll(".status-checkbox:checked");
+  const allCheckbox = document.getElementById("filterStatusAll");
+  
+  if (!allCheckbox) return;
+
+  if (checkedCheckboxes.length === allCheckboxes.length) {
+    allCheckbox.checked = true;
+    allCheckbox.indeterminate = false;
+  } else if (checkedCheckboxes.length === 0) {
+    allCheckbox.checked = false;
+    allCheckbox.indeterminate = false;
+  } else {
+    allCheckbox.checked = false;
+    allCheckbox.indeterminate = true;
+  }
+  
+  updateStatusFilterText();
+  applyFilters();
+}
+
+function updateStatusFilterText() {
+  const checkedCheckboxes = document.querySelectorAll(".status-checkbox:checked");
+  const allCheckboxes = document.querySelectorAll(".status-checkbox");
+  const textBtn = document.getElementById("filterStatusText");
+  
+  if (!textBtn) return;
+  
+  if (checkedCheckboxes.length === allCheckboxes.length || checkedCheckboxes.length === 0) {
+    textBtn.textContent = "Semua Status";
+  } else if (checkedCheckboxes.length === 1) {
+    textBtn.textContent = checkedCheckboxes[0].value;
+  } else {
+    textBtn.textContent = `${checkedCheckboxes.length} Status Dipilih`;
   }
 }
 
@@ -842,7 +908,11 @@ function clearSelection() {
 function applyFilters() {
   const tempat = document.getElementById("filterTempat").value;
   const kelompok = document.getElementById("filterKelompok").value;
-  const status = document.getElementById("filterStatus").value;
+  
+  const checkedStatusCheckboxes = document.querySelectorAll(".status-checkbox:checked");
+  const allStatusCheckboxes = document.querySelectorAll(".status-checkbox");
+  const selectedStatuses = Array.from(checkedStatusCheckboxes).map(cb => cb.value);
+  const isAllStatusSelected = selectedStatuses.length === allStatusCheckboxes.length || selectedStatuses.length === 0;
   const tahun = document.getElementById("filterTahun").value;
   const struktur = document.getElementById("filterStruktur").value;
   const searchTerm = document
@@ -886,10 +956,10 @@ function applyFilters() {
       (item) => item.kelompok === kelompok
     );
   }
-  if (status) {
-    filteredData = filteredData.filter((item) => item.status === status);
+  if (!isAllStatusSelected) {
+    filteredData = filteredData.filter((item) => selectedStatuses.includes(item.status));
     filteredDataForChart = filteredDataForChart.filter(
-      (item) => item.status === status
+      (item) => selectedStatuses.includes(item.status)
     );
   }
 
@@ -948,10 +1018,11 @@ function updateFilterInfo() {
       `Kelompok: ${document.getElementById("filterKelompok").value}`
     );
   }
-  if (document.getElementById("filterStatus").value) {
-    activeFilters.push(
-      `Status: ${document.getElementById("filterStatus").value}`
-    );
+  const checkedStatusCheckboxes = document.querySelectorAll(".status-checkbox:checked");
+  const allStatusCheckboxes = document.querySelectorAll(".status-checkbox");
+  if (checkedStatusCheckboxes.length > 0 && checkedStatusCheckboxes.length < allStatusCheckboxes.length) {
+    const statusNames = Array.from(checkedStatusCheckboxes).map(cb => cb.value).join(", ");
+    activeFilters.push(`Status: ${statusNames}`);
   }
   // NEW: Tampilkan filter struktur lini
   if (strukturLiniFilter !== "all") {
@@ -973,7 +1044,17 @@ function updateFilterInfo() {
 function resetAllFilters() {
   document.getElementById("filterTempat").value = "";
   document.getElementById("filterKelompok").value = "";
-  document.getElementById("filterStatus").value = "";
+  
+  const allCheckbox = document.getElementById("filterStatusAll");
+  if(allCheckbox) {
+      allCheckbox.checked = true;
+      allCheckbox.indeterminate = false;
+  }
+  document.querySelectorAll(".status-checkbox").forEach(cb => cb.checked = true);
+  if (typeof updateStatusFilterText === "function") {
+    updateStatusFilterText();
+  }
+
   document.getElementById("filterTahun").value = "all";
   document.getElementById("filterStruktur").value = "all";
   document.getElementById("searchInput").value = "";
