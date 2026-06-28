@@ -384,11 +384,11 @@ def upload_file():
             
             # Format pesan error agar ramah pengguna
             if "password authentication failed" in error_msg:
-                error_pesan = "Koneksi Database Ditolak: Password Supabase Anda salah. Tolong periksa ulang Environment Variable DATABASE_URL di Vercel."
+                error_pesan = "Koneksi Database Ditolak: Password database salah. Tolong periksa ulang Environment Variable DATABASE_URL di Vercel."
             elif "does not exist" in error_msg:
                 error_pesan = "Tabel database belum siap. Coba refresh Vercel (Redeploy)."
             elif "server closed the connection" in error_msg:
-                error_pesan = "Koneksi ke Supabase terputus. Pastikan link DATABASE_URL benar."
+                error_pesan = "Koneksi ke Database terputus. Pastikan link DATABASE_URL benar dan database sedang aktif."
             else:
                 error_pesan = f"Gagal menyimpan ke database: {error_msg}"
                 
